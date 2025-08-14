@@ -1,38 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Lookup Tool</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        input, button {
-            padding: 10px;
-            margin: 5px;
-            font-size: 16px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Free Email Lookup</title>
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--fg:#e5e7eb;--muted:#9ca3af;}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,Arial,sans-serif;background:var(--bg);color:var(--fg);display:flex;min-height:100vh;align-items:center;justify-content:center}
+    .wrap{width:min(780px,92vw)}
+    .card{background:var(--card);border-radius:16px;padding:22px 20px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    h1{margin:0 0 14px;font-size:22px}
+    .row{display:flex;gap:10px;margin:10px 0 16px}
+    input{flex:1;background:#0b1020;border:1px solid #1f2937;border-radius:12px;padding:12px 14px;color:var(--fg);outline:none}
+    button{padding:12px 16px;border:0;border-radius:12px;background:#2563eb;color:white;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .muted{color:var(--muted);font-size:13px}
+    pre{background:#0b1020;border:1px solid #1f2937;border-radius:12px;padding:14px;overflow:auto;max-height:50vh}
+    .bad{color:#fca5a5} .ok{color:#86efac}
+  </style>
 </head>
 <body>
-    <h2>Free Email Lookup</h2>
-    <input type="text" id="email" placeholder="Enter Email">
-    <button onclick="lookup()">Search</button>
-    <p id="result"></p>
+  <div class="wrap">
+    <div class="card">
+      <h1>Free Email Lookup</h1>
+      <div class="row">
+        <input id="email" type="email" placeholder="Enter email e.g. someone@gmail.com" />
+        <button id="btn" onclick="lookup()">Search</button>
+      </div>
+      <div id="msg" class="muted">Tip: Works fully on GitHub Pages. No backend needed.</div>
+      <pre id="out"></pre>
+    </div>
+  </div>
 
-    <script>
-        function lookup() {
-            let email = document.getElementById("email").value;
-            if(email.trim() === "") {
-                document.getElementById("result").innerText = "Please enter an email.";
-                return;
-            }
-            document.getElementById("result").innerText = "Searching info for: " + email;
-            // यहां API का code add कर सकते हैं
-        }
-    </script>
+<script>
+const FREE_PROVIDERS = new Set([
+  "gmail.com","yahoo.com","outlook.com","hotmail.com","live.com","msn.com","aol.com",
+  "icloud.com","yandex.com","proton.me","protonmail.com","mail.com","zoho.com","gmx.com"
+]);
+
+const DISPOSABLE = new Set([
+  "mailinator.com","yopmail.com","10minutemail.com","guerrillamail.com",
+  "temp-mail.org","trashmail.com","getnada.com","fakemail.net","tempmail.dev"
+]);
+
+function isValidEmail(e){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+async function dnsQuery(name, type="MX"){
+  // Cloudflare DNS over HTTPS (CORS enabled)
+  const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`;
+  const res = await fetch(url, { headers: { "accept": "application/dns-json" }});
+  if(!res.ok) throw new Error("DNS query failed");
+  return res.json();
+}
+
+function summarizeMx(ans){
+  const recs = (ans.Answer || []).map(r => r.data);
+  return recs.length ? recs : [];
+}
+
+async function lookup(){
+  const btn = document.getElementById('btn');
+  const out = document.getElementById('out');
+  const msg = document.getElementById('msg');
+  const email = document.getElementById('email').value.trim();
+
+  out.textContent = "";
+  if(!isValidEmail(email)){
+    msg.innerHTML = '<span class="bad">Please enter a valid email address.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  msg.textContent = `Searching info for: ${email} ...`;
+
+  const domain = email.split("@")[1].toLowerCase();
+  const info = { email, domain, checks: {} };
+
+  try {
+    // MX records
+    const mx = await dnsQuery(domain, "MX");
+    const mxList = summarizeMx(mx);
+    info.checks.mxRecords = mxList;
+    info.checks.hasMX = mxList.length > 0;
+
+    // A record (optional: quick existence check)
+    try {
+      const a = await dnsQuery(domain, "A");
+      info.checks.hasA = Boolean((a.Answer || []).length);
+    } catch { info.checks.hasA = false; }
+
+    // Provider classification
+    info.checks.freeProvider = FREE_PROVIDERS.has(domain);
+    info.checks.disposableDomain = DISPOSABLE.has(domain);
+
+    // Verdict
+    let verdict = "Unknown";
+    if (info.checks.disposableDomain) verdict = "Disposable";
+    else if (info.checks.freeProvider) verdict = "Free Provider";
+    else if (info.checks.hasMX) verdict = "Custom Domain (MX found)";
+    else verdict = "Suspicious / No MX";
+
+    info.verdict = verdict;
+
+    // Pretty output
+    const lines = [
+      `Email: ${email}`,
+      `Domain: ${domain}`,
+      ``,
+      `Verdict: ${verdict}`,
+      ``,
+      `Has MX: ${info.checks.hasMX}`,
+      `MX Records: ${mxList.length ? mxList.join("\\n  - ") : "None"}`,
+      `Has A record: ${info.checks.hasA}`,
+      `Free Provider: ${info.checks.freeProvider}`,
+      `Disposable Domain: ${info.checks.disposableDomain}`,
+    ];
+    out.textContent = lines.join("\\n");
+
+    msg.innerHTML = verdict.includes("Disposable") || verdict.includes("Suspicious")
+      ? '<span class="bad">Done.</span>'
+      : '<span class="ok">Done.</span>';
+
+  } catch (e){
+    msg.innerHTML = '<span class="bad">Lookup failed. Try another email/domain.</span>';
+    out.textContent = (e && e.message) ? e.message : String(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
 </body>
 </html>
