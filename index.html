@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Lookup Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        input, button {
+            padding: 10px;
+            margin: 5px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Free Email Lookup</h2>
+    <input type="text" id="email" placeholder="Enter Email">
+    <button onclick="lookup()">Search</button>
+    <p id="result"></p>
+
+    <script>
+        function lookup() {
+            let email = document.getElementById("email").value;
+            if(email.trim() === "") {
+                document.getElementById("result").innerText = "Please enter an email.";
+                return;
+            }
+            document.getElementById("result").innerText = "Searching info for: " + email;
+            // यहां API का code add कर सकते हैं
+        }
+    </script>
+</body>
+</html>
